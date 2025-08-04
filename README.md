@@ -52,6 +52,3 @@ Note: Ensure your browser allows webcam access. The feed is mirrored for natural
 - Convex hull may slightly overestimate hand area for concave shapes (e.g., between fingers).
 - High resolutions may cause latency; adjust interval in JS if needed.
 - Single hand detection; I personally would recommend using dominant hand.
-
-
-MIT License
