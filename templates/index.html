@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Back Coverage Tracker WebApp</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            background-color: #f8f9fa;
+            font-family: 'Arial', sans-serif;
+        }
+        .container {
+            max-width: 800px;
+        }
+        #video, #canvas, #live {
+            width: 100%;
+            height: auto;
+            border: 1px solid #ced4da;
+            border-radius: 0.375rem;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+        #video {
+            transform: scaleX(-1);
+        }
+        .stage {
+            display: none;
+            position: relative;
+        }
+        #timer {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 4rem;
+            color: #000000;
+            background: rgba(255, 255, 255, 0.8);
+            padding: 20px;
+            border-radius: 50%;
+            display: none;
+            z-index: 10;
+        }
+        .btn {
+            margin-top: 1rem;
+        }
+        .progress {
+            height: 20px;
+            margin-top: 1rem;
+        }
+        .card {
+            margin-bottom: 2rem;
+            padding: 1.5rem;
+            border-radius: 0.5rem;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #343a40;
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="container mt-5">
+        <h1>Back Touch Tracker</h1>
+        
+        <div id="stage1" class="stage card">
+            <h5 class="card-title">Step 1: Capture a still image of your back</h5>
+            <p class="card-text">Position yourself and click the button for a 5-second countdown.</p>
+            <video id="video" autoplay playsinline class="mb-3"></video>
+            <div id="timer"></div>
+            <button id="capture" class="btn btn-primary w-100">Capture Still</button>
+        </div>
+        
+        <div id="stage2" class="stage card">
+            <h5 class="card-title">Step 2: Draw a rectangle on your back area</h5>
+            <p class="card-text">Click and drag to select the region.</p>
+            <canvas id="canvas" class="mb-3"></canvas>
+            <button id="confirmRect" class="btn btn-success w-100">Confirm Rectangle</button>
+        </div>
+        
+        <div id="stage3" class="stage card">
+            <h5 class="card-title">Step 3: Track your hand movements</h5>
+            <p class="card-text">Move your hand over your back to see coverage.</p>
+            <img id="live" src="" class="mb-3">
+            <div id="coverage" class="fw-bold">Coverage: 0%</div>
+            <div class="progress">
+                <div id="progress-bar" class="progress-bar" role="progressbar" style="width: 0%"></div>
+            </div>
+            <button id="reset" class="btn btn-warning w-100 mt-3">Reset</button>
+        </div>
+    </div>
+
+    <script>
+        let stage = 'stage1';
+        let video = document.getElementById('video');
+        let canvas = document.getElementById('canvas');
+        let ctx = canvas.getContext('2d');
+        let live = document.getElementById('live');
+        let timerDiv = document.getElementById('timer');
+        let coverageDiv = document.getElementById('coverage');
+        let progressBar = document.getElementById('progress-bar');
+        let hiddenCanvas = document.createElement('canvas');
+        let hiddenCtx = hiddenCanvas.getContext('2d');
+        
+        let rectStartX, rectStartY, rectEndX, rectEndY;
+        let drawing = false;
+        let intervalId;
+        let width, height;
+        function showStage() {
+            document.querySelectorAll('.stage').forEach(el => el.style.display = 'none');
+            document.getElementById(stage).style.display = 'block';
+        }
+        showStage();
+        navigator.mediaDevices.getUserMedia({
+            video: { facingMode: "user", width: { ideal: 1920 }, height: { ideal: 1080 } }
+        }).then(stream => {
+            video.srcObject = stream;
+            video.onloadedmetadata = () => {
+                width = video.videoWidth;
+                height = video.videoHeight;
+                canvas.width = width;
+                canvas.height = height;
+                hiddenCanvas.width = width;
+                hiddenCanvas.height = height;
+            };
+        }).catch(err => {
+            console.error("Error accessing webcam: ", err);
+        });
+
+        document.getElementById('capture').addEventListener('click', () => {
+            document.getElementById('capture').disabled = true;
+            timerDiv.style.display = 'block';
+            let countdown = 5;
+            timerDiv.innerText = countdown;
+            let timerInterval = setInterval(() => {
+                countdown--;
+                timerDiv.innerText = countdown;
+                if (countdown === 0) {
+                    clearInterval(timerInterval);
+                    timerDiv.style.display = 'none';
+                    hiddenCtx.save();
+                    hiddenCtx.scale(-1, 1);
+                    hiddenCtx.translate(-width, 0);
+                    hiddenCtx.drawImage(video, 0, 0, width, height);
+                    hiddenCtx.restore();
+                    ctx.drawImage(hiddenCanvas, 0, 0, width, height);
+                    stage = 'stage2';
+                    showStage();
+                    document.getElementById('capture').disabled = false;
+                }
+            }, 1000);
+        });
+
+        function getMousePos(e) {
+            let rect = canvas.getBoundingClientRect();
+            let scaleX = canvas.width / rect.width;
+            let scaleY = canvas.height / rect.height;
+            return {
+                x: (e.clientX - rect.left) * scaleX,
+                y: (e.clientY - rect.top) * scaleY
+            };
+        }
+        canvas.addEventListener('mousedown', (e) => {
+            let pos = getMousePos(e);
+            rectStartX = pos.x;
+            rectStartY = pos.y;
+            drawing = true;
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            if (drawing) {
+                let pos = getMousePos(e);
+                ctx.drawImage(hiddenCanvas, 0, 0);
+                ctx.beginPath();
+                ctx.rect(rectStartX, rectStartY, pos.x - rectStartX, pos.y - rectStartY);
+                ctx.strokeStyle = 'red';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+            }
+        });
+
+        canvas.addEventListener('mouseup', (e) => {
+            drawing = false;
+            let pos = getMousePos(e);
+            rectEndX = pos.x;
+            rectEndY = pos.y;
+        });
+        document.getElementById('confirmRect').addEventListener('click', () => {
+            let x1 = Math.min(rectStartX, rectEndX);
+            let y1 = Math.min(rectStartY, rectEndY);
+            let x2 = Math.max(rectStartX, rectEndX);
+            let y2 = Math.max(rectStartY, rectEndY);
+            fetch('/set_rectangle', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ x1, y1, x2, y2 })
+            }).then(res => res.json()).then(data => {
+                if (data.success) {
+                    stage = 'stage3';
+                    showStage();
+                    intervalId = setInterval(processFrame, 100);
+                }
+            });
+        });
+        function processFrame() {
+            hiddenCtx.save();
+            hiddenCtx.scale(-1, 1);
+            hiddenCtx.translate(-width, 0);
+            hiddenCtx.drawImage(video, 0, 0, width, height);
+            hiddenCtx.restore();
+            let data = hiddenCanvas.toDataURL('image/jpeg', 0.5);
+            fetch('/process_frame', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ image: data })
+            }).then(res => res.json()).then(data => {
+                coverageDiv.innerText = `Coverage: ${data.coverage.toFixed(2)}%`;
+                progressBar.style.width = `${data.coverage}%`;
+                progressBar.setAttribute('aria-valuenow', data.coverage);
+                live.src = data.annotated;
+            });
+        }
+
+        // Reset
+        document.getElementById('reset').addEventListener('click', () => {
+            clearInterval(intervalId);
+            fetch('/reset').then(() => {
+                stage = 'stage1';
+                showStage();
+            });
+        });
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
